@@ -1,0 +1,18 @@
+nelmio_api_doc:
+    documentation:
+        info:
+            title: Vents solaires - API
+            description: Interrogation des données historiques de vents solaires (DSCOVR).
+            version: 1.0.0
+        components:
+            securitySchemes:
+                bearerAuth:
+                    type: http
+                    scheme: bearer
+                    bearerFormat: JWT
+        security:
+            - bearerAuth: []
+    areas:
+        default:
+            path_patterns:
+                - ^/api(?!/doc)

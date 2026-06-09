@@ -1,0 +1,78 @@
+doctrine:
+    dbal:
+        default_connection: default
+        types:
+            uuid: Symfony\Bridge\Doctrine\Types\UuidType
+        connections:
+            # Base applicative : utilisateurs + historique de recherche
+            default:
+                url: '%env(resolve:DATABASE_URL)%'
+                profiling_collect_backtrace: '%kernel.debug%'
+            # Base du journal central (audit) — physiquement séparée
+            audit:
+                url: '%env(resolve:AUDIT_DATABASE_URL)%'
+                profiling_collect_backtrace: '%kernel.debug%'
+
+    orm:
+        default_entity_manager: default
+        entity_managers:
+            default:
+                connection: default
+                naming_strategy: doctrine.orm.naming_strategy.underscore
+                identity_generation_preferences:
+                    Doctrine\DBAL\Platforms\PostgreSQLPlatform: identity
+                validate_xml_mapping: true
+                mappings:
+                    App:
+                        type: attribute
+                        is_bundle: false
+                        dir: '%kernel.project_dir%/src/Entity'
+                        prefix: 'App\Entity'
+                        alias: App
+            audit:
+                connection: audit
+                naming_strategy: doctrine.orm.naming_strategy.underscore
+                identity_generation_preferences:
+                    Doctrine\DBAL\Platforms\PostgreSQLPlatform: identity
+                validate_xml_mapping: true
+                mappings:
+                    Audit:
+                        type: attribute
+                        is_bundle: false
+                        dir: '%kernel.project_dir%/src/Audit/Entity'
+                        prefix: 'App\Audit\Entity'
+                        alias: Audit
+
+when@test:
+    doctrine:
+        dbal:
+            # "TEST_TOKEN" is typically set by ParaTest
+            connections:
+                default:
+                    dbname_suffix: '_test%env(default::TEST_TOKEN)%'
+                audit:
+                    dbname_suffix: '_test%env(default::TEST_TOKEN)%'
+
+when@prod:
+    doctrine:
+        orm:
+            entity_managers:
+                default:
+                    query_cache_driver:
+                        type: pool
+                        pool: doctrine.system_cache_pool
+                    result_cache_driver:
+                        type: pool
+                        pool: doctrine.result_cache_pool
+                audit:
+                    query_cache_driver:
+                        type: pool
+                        pool: doctrine.system_cache_pool
+
+    framework:
+        cache:
+            pools:
+                doctrine.result_cache_pool:
+                    adapter: cache.app
+                doctrine.system_cache_pool:
+                    adapter: cache.system

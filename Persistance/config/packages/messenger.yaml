@@ -1,0 +1,31 @@
+framework:
+    messenger:
+        failure_transport: failed
+
+        transports:
+            # Recherches exécutées en arrière-plan (worker) : la déconnexion
+            # client n'interrompt pas le calcul, le résultat est persisté.
+            async:
+                dsn: '%env(MESSENGER_TRANSPORT_DSN)%'
+                retry_strategy:
+                    max_retries: 3
+                    multiplier: 2
+            failed: 'doctrine://default?queue_name=failed'
+
+        default_bus: command.bus
+
+        # CQRS : un bus pour les commandes (écriture / déclenchement),
+        # un bus pour les requêtes (lecture synchrone).
+        buses:
+            command.bus: ~
+            query.bus:
+                default_middleware:
+                    allow_no_handlers: false
+
+        routing:
+            Symfony\Component\Mailer\Messenger\SendEmailMessage: async
+            Symfony\Component\Notifier\Message\ChatMessage: async
+            Symfony\Component\Notifier\Message\SmsMessage: async
+
+            # La recherche est asynchrone (résiliente à la déconnexion)
+            App\CQRS\Command\RunSearch: async

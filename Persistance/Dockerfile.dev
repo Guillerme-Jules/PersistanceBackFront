@@ -1,0 +1,17 @@
+FROM dunglas/frankenphp:1-php8.3
+
+# Extensions PHP nécessaires à Symfony + PostgreSQL
+RUN install-php-extensions intl pdo_pgsql zip opcache
+
+# Composer
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+
+# DEV : opcache relit les fichiers à chaque modif (sinon pas de hot reload)
+RUN printf "opcache.validate_timestamps=1\nopcache.revalidate_freq=0\n" \
+    > "$PHP_INI_DIR/conf.d/zz-dev.ini"
+
+WORKDIR /app
+
+# Installe les dépendances au premier démarrage, puis lance le serveur
+CMD sh -c "[ -d vendor ] || composer install --no-interaction; \
+           exec frankenphp run --config /etc/caddy/Caddyfile"
