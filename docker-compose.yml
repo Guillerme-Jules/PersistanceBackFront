@@ -1,0 +1,51 @@
+services:
+  database:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: app
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d app"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  php:
+    build:
+      context: ./Persistance
+      dockerfile: Dockerfile.dev
+    environment:
+      SERVER_NAME: ":80"
+      APP_ENV: dev
+      DATABASE_URL: "postgresql://app:app@database:5432/app?serverVersion=16&charset=utf8"
+      # Le $$ est volontaire : Docker Compose le convertit en un seul $ pour Symfony
+      CORS_ALLOW_ORIGIN: "^https?://(localhost|127\\.0\\.0\\.1)(:[0-9]+)?$$"
+    ports:
+      - "8000:80"
+    volumes:
+      - ./Persistance:/app           # le code est monté → modifs prises en compte
+    depends_on:
+      database:
+        condition: service_healthy
+
+  frontend:
+    image: node:22-alpine
+    working_dir: /app
+    command: sh -c "npm install && npm run dev -- --host"
+    environment:
+      VITE_API_URL: "http://localhost:8000"
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./Persistance-Front:/app     # code monté → hot reload
+      - /app/node_modules            # évite que l'hôte écrase node_modules
+    depends_on:
+      - php
+
+volumes:
+  db_data:
