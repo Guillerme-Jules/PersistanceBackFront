@@ -167,42 +167,96 @@ function formatValue(v) {
   return String(v)
 }
 
+// Pagination des résultats : on récupère le jeu complet par blocs de 500 lignes
+// (un seul aller-retour serveur), affichés 50 par 50 et découpés en mémoire.
+// Le bloc suivant est préchargé en arrière-plan pour que « suivant » reste fluide.
+const SERVER_BLOCK = 500
 const ROWS_PER_PAGE = 50
 const expanded = reactive({})
-// Par recherche : { columns, rows, total, offset, loading, error } chargé depuis le serveur.
-const rowData = reactive({})
+// Par recherche : { columns, blocks: {offset: rows}, total, page, loading, error }
+const rowState = reactive({})
+
+function rowTotal(s) {
+  return rowState[s.id]?.total ?? s.result?.rowCount ?? 0
+}
+function rowPagesCount(s) {
+  return Math.max(1, Math.ceil(rowTotal(s) / ROWS_PER_PAGE))
+}
+function blockOffsetFor(page) {
+  return Math.floor((page * ROWS_PER_PAGE) / SERVER_BLOCK) * SERVER_BLOCK
+}
 
 async function toggleRows(s) {
   expanded[s.id] = !expanded[s.id]
-  if (expanded[s.id] && !rowData[s.id]) {
-    await loadRows(s, 0)
+  if (expanded[s.id] && !rowState[s.id]) {
+    rowState[s.id] = {
+      columns: s.result?.columns ?? [],
+      blocks: {},
+      total: s.result?.rowCount ?? 0,
+      page: 0,
+      loading: false,
+      error: null,
+    }
+    await goToPage(s, 0)
   }
 }
 
-async function loadRows(s, offset) {
-  rowData[s.id] = { ...(rowData[s.id] ?? {}), loading: true, error: null }
+async function fetchBlock(s, blockOffset) {
+  const { columns, rows, total } = await searchApi.rows(s.id, { limit: SERVER_BLOCK, offset: blockOffset })
+  const st = rowState[s.id]
+  if (!st) return
+  st.blocks = { ...st.blocks, [blockOffset]: rows }
+  if (columns) st.columns = columns
+  if (total != null) st.total = total // le serveur ne renvoie le total que pour le 1er bloc
+}
+
+async function goToPage(s, page) {
+  const st = rowState[s.id]
+  if (!st) return
+  const blockOffset = blockOffsetFor(page)
+  if (st.blocks[blockOffset]) {
+    st.page = page // bloc déjà en cache → changement instantané
+    prefetchNext(s, blockOffset)
+    return
+  }
+  st.loading = true
+  st.error = null
+  st.page = page
   try {
-    const { columns, rows, total } = await searchApi.rows(s.id, { limit: ROWS_PER_PAGE, offset })
-    rowData[s.id] = { columns, rows, total, offset, loading: false, error: null }
+    await fetchBlock(s, blockOffset)
+    prefetchNext(s, blockOffset)
   } catch (e) {
-    rowData[s.id] = { ...(rowData[s.id] ?? {}), loading: false, error: e.message }
+    st.error = e.message
+  } finally {
+    st.loading = false
   }
 }
 
-function rowPageInfo(s) {
-  const d = rowData[s.id]
-  if (!d) return { page: 1, pages: 1 }
-  const pages = Math.max(1, Math.ceil((d.total ?? 0) / ROWS_PER_PAGE))
-  return { page: Math.floor((d.offset ?? 0) / ROWS_PER_PAGE) + 1, pages }
+// Précharge silencieusement le bloc suivant pour absorber le franchissement de bloc.
+function prefetchNext(s, blockOffset) {
+  const st = rowState[s.id]
+  if (!st) return
+  const next = blockOffset + SERVER_BLOCK
+  if (next >= (st.total ?? 0) || st.blocks[next]) return
+  fetchBlock(s, next).catch(() => {})
+}
+
+function rowSlice(s) {
+  const st = rowState[s.id]
+  if (!st) return []
+  const blockOffset = blockOffsetFor(st.page)
+  const rows = st.blocks[blockOffset]
+  if (!rows) return []
+  const start = st.page * ROWS_PER_PAGE - blockOffset
+  return rows.slice(start, start + ROWS_PER_PAGE)
 }
 
 function goRowPage(s, delta) {
-  const d = rowData[s.id]
-  if (!d || d.loading) return
-  const { page, pages } = rowPageInfo(s)
-  const next = Math.min(Math.max(1, page + delta), pages)
-  if (next === page) return
-  loadRows(s, (next - 1) * ROWS_PER_PAGE)
+  const st = rowState[s.id]
+  if (!st || st.loading) return
+  const next = Math.min(Math.max(0, st.page + delta), rowPagesCount(s) - 1)
+  if (next === st.page) return
+  goToPage(s, next)
 }
 </script>
 
@@ -302,26 +356,26 @@ function goRowPage(s, delta) {
                 {{ expanded[s.id] ? 'Masquer' : 'Voir' }} les données ({{ s.result.rowCount.toLocaleString('fr-FR') }})
               </button>
               <div v-if="expanded[s.id]" class="table-wrap">
-                <p v-if="rowData[s.id]?.error" class="muted">{{ rowData[s.id].error }}</p>
-                <p v-else-if="rowData[s.id]?.loading && !rowData[s.id]?.rows" class="muted">Chargement…</p>
-                <table v-else-if="rowData[s.id]?.rows" class="data">
+                <p v-if="rowState[s.id]?.error" class="muted">{{ rowState[s.id].error }}</p>
+                <p v-else-if="rowState[s.id]?.loading && rowSlice(s).length === 0" class="muted">Chargement…</p>
+                <table v-else-if="rowSlice(s).length" class="data">
                   <thead>
                     <tr>
-                      <th v-for="c in (rowData[s.id].columns ?? s.result.columns)" :key="c">{{ c }}</th>
+                      <th v-for="c in (rowState[s.id]?.columns?.length ? rowState[s.id].columns : s.result.columns)" :key="c">{{ c }}</th>
                     </tr>
                   </thead>
                   <tbody>
-                    <tr v-for="(r, i) in rowData[s.id].rows" :key="i">
-                      <td v-for="c in (rowData[s.id].columns ?? s.result.columns)" :key="c">{{ formatValue(r[c]) }}</td>
+                    <tr v-for="(r, i) in rowSlice(s)" :key="i">
+                      <td v-for="c in (rowState[s.id]?.columns?.length ? rowState[s.id].columns : s.result.columns)" :key="c">{{ formatValue(r[c]) }}</td>
                     </tr>
                   </tbody>
                 </table>
-                <div v-if="rowData[s.id] && rowPageInfo(s).pages > 1" class="pager small">
-                  <button class="ghost" :disabled="rowPageInfo(s).page === 1 || rowData[s.id].loading" @click="goRowPage(s, -1)">‹</button>
-                  <span class="muted">{{ rowPageInfo(s).page }} / {{ rowPageInfo(s).pages }}</span>
-                  <button class="ghost" :disabled="rowPageInfo(s).page >= rowPageInfo(s).pages || rowData[s.id].loading" @click="goRowPage(s, 1)">›</button>
+                <div v-if="rowPagesCount(s) > 1" class="pager small">
+                  <button class="ghost" :disabled="(rowState[s.id]?.page ?? 0) === 0 || rowState[s.id]?.loading" @click="goRowPage(s, -1)">‹</button>
+                  <span class="muted">{{ (rowState[s.id]?.page ?? 0) + 1 }} / {{ rowPagesCount(s) }}<span v-if="rowState[s.id]?.loading"> …</span></span>
+                  <button class="ghost" :disabled="(rowState[s.id]?.page ?? 0) >= rowPagesCount(s) - 1 || rowState[s.id]?.loading" @click="goRowPage(s, 1)">›</button>
                 </div>
-                <p v-if="rowData[s.id]?.total != null" class="muted">{{ rowData[s.id].total.toLocaleString('fr-FR') }} lignes au total.</p>
+                <p class="muted">{{ rowTotal(s).toLocaleString('fr-FR') }} lignes au total.</p>
               </div>
             </template>
           </div>

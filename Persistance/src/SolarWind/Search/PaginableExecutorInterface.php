@@ -10,7 +10,10 @@ namespace App\SolarWind\Search;
 interface PaginableExecutorInterface
 {
     /**
-     * @return array{columns: list<string>, rows: list<array<string, mixed>>, total: int}
+     * @return array{columns: list<string>, rows: list<array<string, mixed>>, total: int|null}
+     *
+     * $withTotal à false évite de recalculer le total (requête coûteuse) :
+     * utile pour les pages suivantes, le total étant déjà connu du client.
      */
-    public function paginate(SearchCriteria $criteria, int $limit, int $offset): array;
+    public function paginate(SearchCriteria $criteria, int $limit, int $offset, bool $withTotal = true): array;
 }

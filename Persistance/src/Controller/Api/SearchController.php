@@ -130,7 +130,9 @@ final class SearchController extends AbstractController
 
         try {
             $criteria = SearchCriteria::fromArray($search->getParams());
-            $page = $executor->paginate($criteria, $limit, $offset);
+            // Total coûteux à calculer : uniquement sur la première page.
+            // Pour les suivantes, le client réutilise le total déjà connu.
+            $page = $executor->paginate($criteria, $limit, $offset, withTotal: $offset === 0);
         } catch (\InvalidArgumentException $e) {
             return $this->json(['error' => $e->getMessage()], Response::HTTP_BAD_REQUEST);
         } catch (\Throwable $e) {

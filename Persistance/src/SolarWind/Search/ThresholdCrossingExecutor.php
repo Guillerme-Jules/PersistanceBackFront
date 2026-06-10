@@ -49,11 +49,14 @@ final class ThresholdCrossingExecutor extends AbstractSearchExecutor implements 
         );
     }
 
-    public function paginate(SearchCriteria $criteria, int $limit, int $offset): array
+    public function paginate(SearchCriteria $criteria, int $limit, int $offset, bool $withTotal = true): array
     {
         $base = $this->baseSql($criteria);
 
-        $total = (int) $this->clickhouse->fetchScalar(\sprintf('SELECT count() FROM (%s)', $base));
+        // Le total relance toute la requête de base : on ne le calcule que si demandé.
+        $total = $withTotal
+            ? (int) $this->clickhouse->fetchScalar(\sprintf('SELECT count() FROM (%s)', $base))
+            : null;
         $rows = $this->clickhouse->fetchAll(\sprintf(
             '%s ORDER BY %s LIMIT %d OFFSET %d',
             $base,
