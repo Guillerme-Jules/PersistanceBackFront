@@ -39,7 +39,8 @@ final class ImportSolarWindCommand extends Command
             ->addArgument('zip', InputArgument::OPTIONAL, 'Chemin du zip', 'solarwinds-dscovr-compiled.zip')
             ->addOption('year', null, InputOption::VALUE_REQUIRED, 'Limiter à une année (ex: 2024)')
             ->addOption('month', null, InputOption::VALUE_REQUIRED, 'Limiter à un mois (ex: 202406)')
-            ->addOption('truncate', null, InputOption::VALUE_NONE, 'Vider la table avant import');
+            ->addOption('truncate', null, InputOption::VALUE_NONE, 'Vider la table avant import')
+            ->addOption('if-empty', null, InputOption::VALUE_NONE, 'Ne rien faire si la table contient déjà des lignes');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -47,13 +48,7 @@ final class ImportSolarWindCommand extends Command
         $io = new SymfonyStyle($input, $output);
 
         ini_set('memory_limit', '1024M');
-        $zipPath = (string) $input->getArgument('zip');
-
-        if (!is_file($zipPath)) {
-            $io->error(\sprintf('Zip introuvable: %s', $zipPath));
-
-            return Command::FAILURE;
-        }
+        $zipArg = (string) $input->getArgument('zip');
 
         if (!$this->clickhouse->ping()) {
             $io->error('ClickHouse injoignable. Démarrez le conteneur (docker compose up -d clickhouse).');
@@ -62,6 +57,25 @@ final class ImportSolarWindCommand extends Command
         }
 
         $this->ensureSchema((bool) $input->getOption('truncate'), $io);
+
+        if ($input->getOption('if-empty') && $this->rowCount() > 0) {
+            $io->success(\sprintf(
+                'Table déjà peuplée (%s lignes) : import ignoré.',
+                number_format($this->rowCount(), 0, '.', ' '),
+            ));
+
+            return Command::SUCCESS;
+        }
+
+        $zipPath = preg_match('#^https?://#i', $zipArg) === 1
+            ? $this->download($zipArg, $io)
+            : $zipArg;
+
+        if (!is_file($zipPath)) {
+            $io->error(\sprintf('Zip introuvable: %s', $zipPath));
+
+            return Command::FAILURE;
+        }
 
         $zip = new \ZipArchive();
         if ($zip->open($zipPath) !== true) {
@@ -112,6 +126,35 @@ final class ImportSolarWindCommand extends Command
         ));
 
         return Command::SUCCESS;
+    }
+
+    private function download(string $url, SymfonyStyle $io): string
+    {
+        $dest = sys_get_temp_dir() . '/solarwind-data.zip';
+        if (is_file($dest) && filesize($dest) > 0) {
+            $io->note(\sprintf('Archive déjà téléchargée: %s', $dest));
+
+            return $dest;
+        }
+
+        $io->writeln(\sprintf('Téléchargement des données depuis %s …', $url));
+        $response = $this->httpClient->request('GET', $url, ['timeout' => 0, 'max_duration' => 0]);
+        if ($response->getStatusCode() !== 200) {
+            throw new \RuntimeException(\sprintf('Téléchargement échoué (HTTP %d).', $response->getStatusCode()));
+        }
+
+        $handle = fopen($dest, 'wb');
+        if ($handle === false) {
+            throw new \RuntimeException(\sprintf('Impossible d\'écrire %s.', $dest));
+        }
+        foreach ($this->httpClient->stream($response) as $chunk) {
+            fwrite($handle, $chunk->getContent());
+        }
+        fclose($handle);
+
+        $io->writeln(\sprintf('Téléchargé: %s', $dest));
+
+        return $dest;
     }
 
     private function ensureSchema(bool $truncate, SymfonyStyle $io): void

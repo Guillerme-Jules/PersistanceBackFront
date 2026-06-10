@@ -118,7 +118,7 @@ services:
       - sh
       - -c
       - |
-        ([ -f vendor/autoload_runtime.php ] || composer install --no-interaction) &&
+        until [ -f vendor/autoload_runtime.php ]; do sleep 2; done &&
         exec php bin/console messenger:consume async -vv --time-limit=3600
     restart: unless-stopped
     healthcheck:
@@ -132,6 +132,32 @@ services:
     depends_on:
       database:
         condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      php:
+        condition: service_started
+
+  data-init:
+    build:
+      context: ./Persistance
+      dockerfile: Dockerfile.dev
+    command:
+      - sh
+      - -c
+      - |
+        until [ -f vendor/autoload_runtime.php ]; do sleep 2; done &&
+        php bin/console app:solarwind:import "$$SOLARWIND_DATA_URL" --if-empty
+    restart: "no"
+    healthcheck:
+      disable: true
+    environment:
+      <<: *app-env
+      SOLARWIND_DATA_URL: "https://github.com/Guillerme-Jules/PersistanceBackFront/releases/download/data/solarwinds-dscovr-compiled.zip"
+    volumes:
+      - ./Persistance:/app
+      - php_vendor:/app/vendor
+      - php_var:/app/var
+    depends_on:
       clickhouse:
         condition: service_healthy
       php:
