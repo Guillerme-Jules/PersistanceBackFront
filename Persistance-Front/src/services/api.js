@@ -28,6 +28,11 @@ export const searchApi = {
   // GET /api/search/{id} -> recherche normalisée
   get: (id) => http.get(`/api/search/${id}`),
 
+  // GET /api/search/{id}/rows?limit&offset -> { columns, rows, total, limit, offset }
+  // Ré-interroge ClickHouse pour récupérer une page du jeu complet (au-delà des 20 d'aperçu).
+  rows: (id, { limit = 50, offset = 0 } = {}) =>
+    http.get(`/api/search/${id}/rows`, { query: { limit, offset } }),
+
   // POST /api/search/{id}/replay -> 202 nouvelle recherche
   replay: (id, body = {}) => http.post(`/api/search/${id}/replay`, body),
 }

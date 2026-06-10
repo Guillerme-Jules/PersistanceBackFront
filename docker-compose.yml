@@ -152,10 +152,10 @@ services:
       disable: true
     environment:
       <<: *app-env
-      SOLARWIND_DATA_SOURCE: "/srv/import/solarwinds-dscovr-compiled.zip"
+      SOLARWIND_DATA_SOURCE: "/import/solarwinds-dscovr-compiled.zip"
     volumes:
       - ./Persistance:/app
-      - ./:/srv/import:ro
+      - ./import:/import:ro
       - php_vendor:/app/vendor
       - php_var:/app/var
     depends_on:

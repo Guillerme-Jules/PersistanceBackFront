@@ -167,26 +167,42 @@ function formatValue(v) {
   return String(v)
 }
 
-const ROWS_PER_PAGE = 20
+const ROWS_PER_PAGE = 50
 const expanded = reactive({})
-const rowPage = reactive({})
+// Par recherche : { columns, rows, total, offset, loading, error } chargé depuis le serveur.
+const rowData = reactive({})
 
-function toggleRows(id) {
-  expanded[id] = !expanded[id]
-  if (rowPage[id] == null) rowPage[id] = 0
+async function toggleRows(s) {
+  expanded[s.id] = !expanded[s.id]
+  if (expanded[s.id] && !rowData[s.id]) {
+    await loadRows(s, 0)
+  }
 }
-function rowSlice(s) {
-  const rows = s.result?.preview ?? []
-  const p = rowPage[s.id] ?? 0
-  return rows.slice(p * ROWS_PER_PAGE, (p + 1) * ROWS_PER_PAGE)
+
+async function loadRows(s, offset) {
+  rowData[s.id] = { ...(rowData[s.id] ?? {}), loading: true, error: null }
+  try {
+    const { columns, rows, total } = await searchApi.rows(s.id, { limit: ROWS_PER_PAGE, offset })
+    rowData[s.id] = { columns, rows, total, offset, loading: false, error: null }
+  } catch (e) {
+    rowData[s.id] = { ...(rowData[s.id] ?? {}), loading: false, error: e.message }
+  }
 }
-function rowPages(s) {
-  return Math.ceil((s.result?.preview?.length ?? 0) / ROWS_PER_PAGE)
+
+function rowPageInfo(s) {
+  const d = rowData[s.id]
+  if (!d) return { page: 1, pages: 1 }
+  const pages = Math.max(1, Math.ceil((d.total ?? 0) / ROWS_PER_PAGE))
+  return { page: Math.floor((d.offset ?? 0) / ROWS_PER_PAGE) + 1, pages }
 }
+
 function goRowPage(s, delta) {
-  const cur = rowPage[s.id] ?? 0
-  const next = Math.min(Math.max(0, cur + delta), rowPages(s) - 1)
-  rowPage[s.id] = next
+  const d = rowData[s.id]
+  if (!d || d.loading) return
+  const { page, pages } = rowPageInfo(s)
+  const next = Math.min(Math.max(1, page + delta), pages)
+  if (next === page) return
+  loadRows(s, (next - 1) * ROWS_PER_PAGE)
 }
 </script>
 
@@ -282,28 +298,30 @@ function goRowPage(s, delta) {
             </div>
 
             <template v-if="s.result.preview && s.result.preview.length">
-              <button class="link small" @click="toggleRows(s.id)">
-                {{ expanded[s.id] ? 'Masquer' : 'Voir' }} les données ({{ s.result.preview.length }})
+              <button class="link small" @click="toggleRows(s)">
+                {{ expanded[s.id] ? 'Masquer' : 'Voir' }} les données ({{ s.result.rowCount.toLocaleString('fr-FR') }})
               </button>
               <div v-if="expanded[s.id]" class="table-wrap">
-                <table class="data">
+                <p v-if="rowData[s.id]?.error" class="muted">{{ rowData[s.id].error }}</p>
+                <p v-else-if="rowData[s.id]?.loading && !rowData[s.id]?.rows" class="muted">Chargement…</p>
+                <table v-else-if="rowData[s.id]?.rows" class="data">
                   <thead>
                     <tr>
-                      <th v-for="c in s.result.columns" :key="c">{{ c }}</th>
+                      <th v-for="c in (rowData[s.id].columns ?? s.result.columns)" :key="c">{{ c }}</th>
                     </tr>
                   </thead>
                   <tbody>
-                    <tr v-for="(r, i) in rowSlice(s)" :key="i">
-                      <td v-for="c in s.result.columns" :key="c">{{ formatValue(r[c]) }}</td>
+                    <tr v-for="(r, i) in rowData[s.id].rows" :key="i">
+                      <td v-for="c in (rowData[s.id].columns ?? s.result.columns)" :key="c">{{ formatValue(r[c]) }}</td>
                     </tr>
                   </tbody>
                 </table>
-                <div v-if="rowPages(s) > 1" class="pager small">
-                  <button class="ghost" :disabled="(rowPage[s.id] ?? 0) === 0" @click="goRowPage(s, -1)">‹</button>
-                  <span class="muted">{{ (rowPage[s.id] ?? 0) + 1 }} / {{ rowPages(s) }}</span>
-                  <button class="ghost" :disabled="(rowPage[s.id] ?? 0) >= rowPages(s) - 1" @click="goRowPage(s, 1)">›</button>
+                <div v-if="rowData[s.id] && rowPageInfo(s).pages > 1" class="pager small">
+                  <button class="ghost" :disabled="rowPageInfo(s).page === 1 || rowData[s.id].loading" @click="goRowPage(s, -1)">‹</button>
+                  <span class="muted">{{ rowPageInfo(s).page }} / {{ rowPageInfo(s).pages }}</span>
+                  <button class="ghost" :disabled="rowPageInfo(s).page >= rowPageInfo(s).pages || rowData[s.id].loading" @click="goRowPage(s, 1)">›</button>
                 </div>
-                <p v-if="s.result.truncated" class="muted">Aperçu tronqué — {{ s.result.rowCount.toLocaleString('fr-FR') }} lignes au total.</p>
+                <p v-if="rowData[s.id]?.total != null" class="muted">{{ rowData[s.id].total.toLocaleString('fr-FR') }} lignes au total.</p>
               </div>
             </template>
           </div>

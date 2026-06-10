@@ -9,7 +9,9 @@ use App\Enum\SearchType;
 use App\Journal\Journal;
 use App\Repository\SearchRepository;
 use App\Serializer\SearchNormalizer;
+use App\SolarWind\Search\PaginableExecutorInterface;
 use App\SolarWind\Search\SearchCriteria;
+use App\SolarWind\Search\SearchExecutorRegistry;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -29,6 +31,7 @@ final class SearchController extends AbstractController
         private readonly SearchNormalizer $normalizer,
         private readonly MessageBusInterface $commandBus,
         private readonly Journal $journal,
+        private readonly SearchExecutorRegistry $executors,
     ) {
     }
 
@@ -104,6 +107,48 @@ final class SearchController extends AbstractController
         return $this->json($this->normalizer->toArray($search));
     }
 
+    /**
+     * Renvoie une page du jeu de résultats complet en ré-interrogeant ClickHouse.
+     * Utile pour les recherches dont l'aperçu (20 lignes) est tronqué.
+     */
+    #[OA\Response(response: 200, description: 'Page de lignes du résultat')]
+    #[Route('/{id}/rows', methods: ['GET'])]
+    public function rows(#[CurrentUser] User $user, string $id, Request $request): JsonResponse
+    {
+        $search = $this->find($user, $id);
+
+        $executor = $this->executors->get($search->getType());
+        if (!$executor instanceof PaginableExecutorInterface) {
+            return $this->json(
+                ['error' => 'Ce type de recherche ne produit pas de lignes paginables.'],
+                Response::HTTP_BAD_REQUEST,
+            );
+        }
+
+        $limit = min(500, max(1, $request->query->getInt('limit', 50)));
+        $offset = max(0, $request->query->getInt('offset', 0));
+
+        try {
+            $criteria = SearchCriteria::fromArray($search->getParams());
+            $page = $executor->paginate($criteria, $limit, $offset);
+        } catch (\InvalidArgumentException $e) {
+            return $this->json(['error' => $e->getMessage()], Response::HTTP_BAD_REQUEST);
+        } catch (\Throwable $e) {
+            return $this->json(
+                ['error' => 'Résultats indisponibles (ClickHouse injoignable ?).'],
+                Response::HTTP_BAD_GATEWAY,
+            );
+        }
+
+        return $this->json([
+            'columns' => $page['columns'],
+            'rows' => $page['rows'],
+            'total' => $page['total'],
+            'limit' => $limit,
+            'offset' => $offset,
+        ]);
+    }
+
     #[Route('/{id}/replay', methods: ['POST'])]
     public function replay(#[CurrentUser] User $user, string $id, Request $request): JsonResponse
     {
@@ -158,7 +203,6 @@ final class SearchController extends AbstractController
 
     private function criteriaPayload(array $payload): array
     {
-
         return array_intersect_key($payload, array_flip([
             'type', 'metric', 'from', 'to', 'threshold', 'operator', 'bucketHours',
         ]));

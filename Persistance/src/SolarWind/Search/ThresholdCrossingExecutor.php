@@ -4,14 +4,76 @@ namespace App\SolarWind\Search;
 
 use App\Enum\SearchType;
 
-final class ThresholdCrossingExecutor extends AbstractSearchExecutor
+final class ThresholdCrossingExecutor extends AbstractSearchExecutor implements PaginableExecutorInterface
 {
+    private const COLUMNS = ['start', 'end', 'seconds', 'min', 'max'];
+    private const ORDER = 'start';
+
     public function type(): SearchType
     {
         return SearchType::ThresholdCrossing;
     }
 
     public function execute(SearchCriteria $criteria): SearchResult
+    {
+        $base = $this->baseSql($criteria);
+
+        [$result, $durationMs] = $this->timed(function () use ($base) {
+            $count = (int) $this->clickhouse->fetchScalar(\sprintf('SELECT count() FROM (%s)', $base));
+            $rows = $this->clickhouse->fetchAll(\sprintf(
+                '%s ORDER BY %s LIMIT %d',
+                $base,
+                self::ORDER,
+                SearchResult::PREVIEW_SIZE,
+            ));
+
+            return [$count, $rows];
+        });
+
+        [$count, $rows] = $result;
+        $mapped = array_map($this->mapRow(...), $rows);
+        $totalSeconds = array_sum(array_map(static fn ($r) => (int) $r['seconds'], $mapped));
+
+        return new SearchResult(
+            summary: [
+                'metric' => $criteria->metric?->value,
+                'operator' => $criteria->operator ?? '<',
+                'threshold' => $criteria->threshold,
+                'intervalCount' => $count,
+                'previewSeconds' => $totalSeconds,
+            ],
+            columns: self::COLUMNS,
+            rows: $mapped,
+            rowCount: $count,
+            durationMs: $durationMs,
+        );
+    }
+
+    public function paginate(SearchCriteria $criteria, int $limit, int $offset): array
+    {
+        $base = $this->baseSql($criteria);
+
+        $total = (int) $this->clickhouse->fetchScalar(\sprintf('SELECT count() FROM (%s)', $base));
+        $rows = $this->clickhouse->fetchAll(\sprintf(
+            '%s ORDER BY %s LIMIT %d OFFSET %d',
+            $base,
+            self::ORDER,
+            $limit,
+            $offset,
+        ));
+
+        return [
+            'columns' => self::COLUMNS,
+            'rows' => array_map($this->mapRow(...), $rows),
+            'total' => $total,
+        ];
+    }
+
+    /**
+     * Requête « îlots » : regroupe les mesures consécutives qui franchissent le seuil.
+     * Partagée par l'aperçu (execute) et la pagination (paginate).
+     */
+    private function baseSql(SearchCriteria $criteria): string
     {
         $metric = $this->require($criteria->metric, 'metric');
         $operator = $criteria->operator ?? '<';
@@ -23,10 +85,9 @@ final class ThresholdCrossingExecutor extends AbstractSearchExecutor
         }
 
         $column = $metric->column();
-        $threshold = $criteria->threshold;
         $range = $this->rangeClause($criteria->from, $criteria->to);
 
-        $islands = \sprintf(
+        return \sprintf(
             "SELECT min(ts) AS start, max(ts) AS end, count() AS seconds,
                     round(min(%1\$s), 3) AS min, round(max(%1\$s), 3) AS max
              FROM (
@@ -40,41 +101,18 @@ final class ThresholdCrossingExecutor extends AbstractSearchExecutor
             self::TABLE,
             $operator,
             $range,
-            $threshold,
+            $criteria->threshold,
         );
+    }
 
-        [$result, $durationMs] = $this->timed(function () use ($islands) {
-            $count = (int) $this->clickhouse->fetchScalar(\sprintf('SELECT count() FROM (%s)', $islands));
-            $rows = $this->clickhouse->fetchAll(\sprintf(
-                '%s ORDER BY start LIMIT %d',
-                $islands,
-                SearchResult::PREVIEW_SIZE,
-            ));
-
-            return [$count, $rows];
-        });
-
-        [$count, $rows] = $result;
-        $totalSeconds = array_sum(array_map(static fn ($r) => (int) $r['seconds'], $rows));
-
-        return new SearchResult(
-            summary: [
-                'metric' => $metric->value,
-                'operator' => $operator,
-                'threshold' => $threshold,
-                'intervalCount' => $count,
-                'previewSeconds' => $totalSeconds,
-            ],
-            columns: ['start', 'end', 'seconds', 'min', 'max'],
-            rows: array_map(static fn (array $r) => [
-                'start' => $r['start'],
-                'end' => $r['end'],
-                'seconds' => (int) $r['seconds'],
-                'min' => (float) $r['min'],
-                'max' => (float) $r['max'],
-            ], $rows),
-            rowCount: $count,
-            durationMs: $durationMs,
-        );
+    private function mapRow(array $r): array
+    {
+        return [
+            'start' => $r['start'],
+            'end' => $r['end'],
+            'seconds' => (int) $r['seconds'],
+            'min' => (float) $r['min'],
+            'max' => (float) $r['max'],
+        ];
     }
 }

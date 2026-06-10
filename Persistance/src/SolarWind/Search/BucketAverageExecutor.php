@@ -3,10 +3,12 @@
 namespace App\SolarWind\Search;
 
 use App\Enum\SearchType;
-use App\SolarWind\ClickHouseClient;
 
-final class BucketAverageExecutor extends AbstractSearchExecutor
+final class BucketAverageExecutor extends AbstractSearchExecutor implements PaginableExecutorInterface
 {
+    private const COLUMNS = ['bucket', 'average', 'samples'];
+    private const ORDER = 'bucket';
+
     public function type(): SearchType
     {
         return SearchType::BucketAverage;
@@ -14,32 +16,14 @@ final class BucketAverageExecutor extends AbstractSearchExecutor
 
     public function execute(SearchCriteria $criteria): SearchResult
     {
-        $metric = $this->require($criteria->metric, 'metric');
-        $bucketHours = $criteria->bucketHours ?? 12;
-        if ($bucketHours < 1) {
-            throw new \InvalidArgumentException('bucketHours doit être >= 1.');
-        }
-
-        $column = $metric->column();
-        $range = $this->rangeClause($criteria->from, $criteria->to);
-
-        $base = \sprintf(
-            'SELECT toStartOfInterval(ts, INTERVAL %1$d HOUR) AS bucket,
-                    round(avg(%2$s), 3) AS average, count(%2$s) AS samples
-             FROM %3$s
-             WHERE %4$s
-             GROUP BY bucket',
-            $bucketHours,
-            $column,
-            self::TABLE,
-            $range,
-        );
+        $base = $this->baseSql($criteria);
 
         [$result, $durationMs] = $this->timed(function () use ($base) {
             $count = (int) $this->clickhouse->fetchScalar(\sprintf('SELECT count() FROM (%s)', $base));
             $rows = $this->clickhouse->fetchAll(\sprintf(
-                '%s ORDER BY bucket LIMIT %d',
+                '%s ORDER BY %s LIMIT %d',
                 $base,
+                self::ORDER,
                 SearchResult::PREVIEW_SIZE,
             ));
 
@@ -50,18 +34,67 @@ final class BucketAverageExecutor extends AbstractSearchExecutor
 
         return new SearchResult(
             summary: [
-                'metric' => $metric->value,
-                'bucketHours' => $bucketHours,
+                'metric' => $criteria->metric?->value,
+                'bucketHours' => $criteria->bucketHours ?? 12,
                 'bucketCount' => $count,
             ],
-            columns: ['bucket', 'average', 'samples'],
-            rows: array_map(static fn (array $r) => [
-                'bucket' => $r['bucket'],
-                'average' => $r['average'] !== null ? (float) $r['average'] : null,
-                'samples' => (int) $r['samples'],
-            ], $rows),
+            columns: self::COLUMNS,
+            rows: array_map($this->mapRow(...), $rows),
             rowCount: $count,
             durationMs: $durationMs,
         );
+    }
+
+    public function paginate(SearchCriteria $criteria, int $limit, int $offset): array
+    {
+        $base = $this->baseSql($criteria);
+
+        $total = (int) $this->clickhouse->fetchScalar(\sprintf('SELECT count() FROM (%s)', $base));
+        $rows = $this->clickhouse->fetchAll(\sprintf(
+            '%s ORDER BY %s LIMIT %d OFFSET %d',
+            $base,
+            self::ORDER,
+            $limit,
+            $offset,
+        ));
+
+        return [
+            'columns' => self::COLUMNS,
+            'rows' => array_map($this->mapRow(...), $rows),
+            'total' => $total,
+        ];
+    }
+
+    private function baseSql(SearchCriteria $criteria): string
+    {
+        $metric = $this->require($criteria->metric, 'metric');
+        $bucketHours = $criteria->bucketHours ?? 12;
+        if ($bucketHours < 1) {
+            throw new \InvalidArgumentException('bucketHours doit être >= 1.');
+        }
+
+        $column = $metric->column();
+        $range = $this->rangeClause($criteria->from, $criteria->to);
+
+        return \sprintf(
+            'SELECT toStartOfInterval(ts, INTERVAL %1$d HOUR) AS bucket,
+                    round(avg(%2$s), 3) AS average, count(%2$s) AS samples
+             FROM %3$s
+             WHERE %4$s
+             GROUP BY bucket',
+            $bucketHours,
+            $column,
+            self::TABLE,
+            $range,
+        );
+    }
+
+    private function mapRow(array $r): array
+    {
+        return [
+            'bucket' => $r['bucket'],
+            'average' => $r['average'] !== null ? (float) $r['average'] : null,
+            'samples' => (int) $r['samples'],
+        ];
     }
 }
