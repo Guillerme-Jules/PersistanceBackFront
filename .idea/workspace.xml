@@ -4,10 +4,9 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="76346bb0-c703-48c1-8e24-8deae8524a2f" name="Changes" comment="back">
-      <change beforePath="$PROJECT_DIR$/Persistance-Front/src/App.vue" beforeDir="false" afterPath="$PROJECT_DIR$/Persistance-Front/src/App.vue" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Persistance-Front/src/assets/main.css" beforeDir="false" afterPath="$PROJECT_DIR$/Persistance-Front/src/assets/main.css" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/docker-compose.yml" beforeDir="false" afterPath="$PROJECT_DIR$/docker-compose.yml" afterDir="false" />
+    <list default="true" id="76346bb0-c703-48c1-8e24-8deae8524a2f" name="Changes" comment="DEV - front utilisation des api.">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Persistance/config/reference.php" beforeDir="false" afterPath="$PROJECT_DIR$/Persistance/config/reference.php" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -59,7 +58,7 @@
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
       <updated>1781013865909</updated>
-      <workItem from="1781013866933" duration="2315000" />
+      <workItem from="1781013866933" duration="2935000" />
     </task>
     <task id="LOCAL-00001" summary="adaze">
       <option name="closed" value="true" />
@@ -85,7 +84,15 @@
       <option name="project" value="LOCAL" />
       <updated>1781014192979</updated>
     </task>
-    <option name="localTasksCounter" value="4" />
+    <task id="LOCAL-00004" summary="DEV - front utilisation des api.">
+      <option name="closed" value="true" />
+      <created>1781076796901</created>
+      <option name="number" value="00004" />
+      <option name="presentableId" value="LOCAL-00004" />
+      <option name="project" value="LOCAL" />
+      <updated>1781076796901</updated>
+    </task>
+    <option name="localTasksCounter" value="5" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -95,6 +102,7 @@
     <MESSAGE value="adaze" />
     <MESSAGE value="front" />
     <MESSAGE value="back" />
-    <option name="LAST_COMMIT_MESSAGE" value="back" />
+    <MESSAGE value="DEV - front utilisation des api." />
+    <option name="LAST_COMMIT_MESSAGE" value="DEV - front utilisation des api." />
   </component>
 </project>
