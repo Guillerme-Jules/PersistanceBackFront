@@ -146,15 +146,16 @@ services:
       - -c
       - |
         until [ -f vendor/autoload_runtime.php ]; do sleep 2; done &&
-        php bin/console app:solarwind:import "$$SOLARWIND_DATA_URL" --if-empty
+        php bin/console app:solarwind:import "$$SOLARWIND_DATA_SOURCE" --if-empty
     restart: "no"
     healthcheck:
       disable: true
     environment:
       <<: *app-env
-      SOLARWIND_DATA_URL: "https://github.com/Guillerme-Jules/PersistanceBackFront/releases/download/data/solarwinds-dscovr-compiled.zip"
+      SOLARWIND_DATA_SOURCE: "/srv/import/solarwinds-dscovr-compiled.zip"
     volumes:
       - ./Persistance:/app
+      - ./:/srv/import:ro
       - php_vendor:/app/vendor
       - php_var:/app/var
     depends_on:
