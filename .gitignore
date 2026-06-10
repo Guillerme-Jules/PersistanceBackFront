@@ -1,0 +1,11 @@
+solarwinds-dscovr-compiled.zip
+*.zip
+*.csv
+
+/Persistance/config/reference.php
+
+.idea/
+.vscode/
+
+Thumbs.db
+.DS_Store
