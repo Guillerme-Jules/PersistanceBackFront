@@ -10,6 +10,7 @@ use App\Journal\Journal;
 use App\Repository\SearchRepository;
 use App\Serializer\SearchNormalizer;
 use App\SolarWind\Search\PaginableExecutorInterface;
+use App\SolarWind\Search\ResultRowCache;
 use App\SolarWind\Search\SearchCriteria;
 use App\SolarWind\Search\SearchExecutorRegistry;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -32,6 +33,7 @@ final class SearchController extends AbstractController
         private readonly MessageBusInterface $commandBus,
         private readonly Journal $journal,
         private readonly SearchExecutorRegistry $executors,
+        private readonly ResultRowCache $resultCache,
     ) {
     }
 
@@ -116,6 +118,7 @@ final class SearchController extends AbstractController
     public function rows(#[CurrentUser] User $user, string $id, Request $request): JsonResponse
     {
         $search = $this->find($user, $id);
+        $searchId = (string) $search->getId();
 
         $executor = $this->executors->get($search->getType());
         if (!$executor instanceof PaginableExecutorInterface) {
@@ -127,6 +130,18 @@ final class SearchController extends AbstractController
 
         $limit = min(500, max(1, $request->query->getInt('limit', 50)));
         $offset = max(0, $request->query->getInt('offset', 0));
+
+        if ($this->resultCache->has($searchId)) {
+            $columns = $search->getResultColumns();
+
+            return $this->json([
+                'columns' => $columns,
+                'rows' => $this->resultCache->fetch($searchId, $columns, $limit, $offset),
+                'total' => $search->getRowCount(),
+                'limit' => $limit,
+                'offset' => $offset,
+            ]);
+        }
 
         try {
             $criteria = SearchCriteria::fromArray($search->getParams());

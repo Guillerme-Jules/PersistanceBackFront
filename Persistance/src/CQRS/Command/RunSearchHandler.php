@@ -6,6 +6,8 @@ use App\Entity\Search;
 use App\Journal\Journal;
 use App\Mercure\SearchPublisher;
 use App\Repository\SearchRepository;
+use App\SolarWind\Search\PaginableExecutorInterface;
+use App\SolarWind\Search\ResultRowCache;
 use App\SolarWind\Search\SearchCriteria;
 use App\SolarWind\Search\SearchExecutorRegistry;
 use Doctrine\ORM\EntityManagerInterface;
@@ -21,6 +23,7 @@ final class RunSearchHandler
         private readonly SearchPublisher $publisher,
         private readonly Journal $journal,
         private readonly EntityManagerInterface $em,
+        private readonly ResultRowCache $resultCache,
     ) {
     }
 
@@ -43,6 +46,21 @@ final class RunSearchHandler
         try {
             $criteria = SearchCriteria::fromArray($search->getParams());
             $result = $this->registry->execute($criteria);
+
+            $executor = $this->registry->get($criteria->type);
+            if ($executor instanceof PaginableExecutorInterface
+                && $result->rowCount > 0
+                && !$this->resultCache->has((string) $search->getId())
+            ) {
+                try {
+                    $this->resultCache->store((string) $search->getId(), $executor->materializePayloadSql($criteria));
+                } catch (\Throwable $e) {
+                    $this->journal->error(Journal::SEARCH_FAILED, 'Matérialisation du cache de pagination échouée', [
+                        'searchId' => (string) $search->getId(),
+                        'exception' => $e->getMessage(),
+                    ]);
+                }
+            }
 
             $search->markDone(
                 summary: $result->summary,

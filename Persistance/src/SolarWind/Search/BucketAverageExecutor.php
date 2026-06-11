@@ -68,6 +68,16 @@ final class BucketAverageExecutor extends AbstractSearchExecutor implements Pagi
         ];
     }
 
+    public function materializePayloadSql(SearchCriteria $criteria): string
+    {
+        return \sprintf(
+            'SELECT toJSONString(tuple(bucket, average, samples)) AS payload '
+            . 'FROM (%s) ORDER BY %s',
+            $this->baseSql($criteria),
+            self::ORDER,
+        );
+    }
+
     private function baseSql(SearchCriteria $criteria): string
     {
         $metric = $this->require($criteria->metric, 'metric');

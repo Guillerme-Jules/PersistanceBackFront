@@ -6,9 +6,8 @@ RUN install-php-extensions intl pdo_pgsql zip opcache
 # Composer
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
-# DEV : opcache relit les fichiers à chaque modif (sinon pas de hot reload)
-RUN printf "opcache.validate_timestamps=1\nopcache.revalidate_freq=0\n" \
-    > "$PHP_INI_DIR/conf.d/zz-dev.ini"
+RUN printf "opcache.validate_timestamps=0\nopcache.memory_consumption=256\nopcache.max_accelerated_files=30000\nopcache.interned_strings_buffer=24\nrealpath_cache_size=4096K\nrealpath_cache_ttl=600\n" \
+    > "$PHP_INI_DIR/conf.d/zz-perf.ini"
 
 WORKDIR /app
 

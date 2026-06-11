@@ -70,6 +70,16 @@ final class RawRangeExecutor extends AbstractSearchExecutor implements Paginable
         ];
     }
 
+    public function materializePayloadSql(SearchCriteria $criteria): string
+    {
+        return \sprintf(
+            'SELECT toJSONString(tuple(ts, speed, density, bt, bz)) AS payload '
+            . 'FROM (%s) ORDER BY %s',
+            $this->baseSql($criteria),
+            self::ORDER,
+        );
+    }
+
     private function baseSql(SearchCriteria $criteria): string
     {
         $from = $this->require($criteria->from, 'from');

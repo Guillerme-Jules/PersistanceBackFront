@@ -72,10 +72,15 @@ final class ThresholdCrossingExecutor extends AbstractSearchExecutor implements 
         ];
     }
 
-    /**
-     * Requête « îlots » : regroupe les mesures consécutives qui franchissent le seuil.
-     * Partagée par l'aperçu (execute) et la pagination (paginate).
-     */
+    public function materializePayloadSql(SearchCriteria $criteria): string
+    {
+        return \sprintf(
+            'SELECT toJSONString(tuple(`start`, `end`, `seconds`, `min`, `max`)) AS payload '
+            . 'FROM (%s) ORDER BY `start`',
+            $this->baseSql($criteria),
+        );
+    }
+
     private function baseSql(SearchCriteria $criteria): string
     {
         $metric = $this->require($criteria->metric, 'metric');
@@ -94,10 +99,13 @@ final class ThresholdCrossingExecutor extends AbstractSearchExecutor implements 
             "SELECT min(ts) AS start, max(ts) AS end, count() AS seconds,
                     round(min(%1\$s), 3) AS min, round(max(%1\$s), 3) AS max
              FROM (
-                 SELECT ts, %1\$s,
-                        toUInt32(ts) - row_number() OVER (ORDER BY ts) AS grp
-                 FROM %2\$s
-                 WHERE (%4\$s) AND %1\$s %3\$s %5\$F
+                 SELECT ts, %1\$s, toUInt32(ts) - rowNumberInAllBlocks() AS grp
+                 FROM (
+                     SELECT ts, %1\$s
+                     FROM %2\$s
+                     WHERE (%4\$s) AND %1\$s %3\$s %5\$F
+                     ORDER BY ts
+                 )
              )
              GROUP BY grp",
             $column,

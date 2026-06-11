@@ -1,5 +1,7 @@
 x-app-env: &app-env
-  APP_ENV: dev
+  APP_ENV: prod
+  APP_DEBUG: "0"
+  APP_SECRET: "9f2c1d7a4b6e8035c19af27d4e6b8a51"
   DATABASE_URL: "postgresql://app:app@database:5432/app?serverVersion=16&charset=utf8"
   AUDIT_DATABASE_URL: "postgresql://app:app@database:5432/audit?serverVersion=16&charset=utf8"
   CLICKHOUSE_HOST: clickhouse
@@ -92,6 +94,7 @@ services:
         php bin/console doctrine:database:create --connection=audit --if-not-exists --no-interaction &&
         php bin/console doctrine:migrations:migrate --no-interaction --allow-no-migration &&
         php bin/console doctrine:schema:update --em=audit --force --no-interaction &&
+        php bin/console cache:clear --no-interaction &&
         exec frankenphp run --config /etc/caddy/Caddyfile
     environment:
       <<: *app-env

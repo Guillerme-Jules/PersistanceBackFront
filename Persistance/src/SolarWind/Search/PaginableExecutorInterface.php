@@ -16,4 +16,6 @@ interface PaginableExecutorInterface
      * utile pour les pages suivantes, le total étant déjà connu du client.
      */
     public function paginate(SearchCriteria $criteria, int $limit, int $offset, bool $withTotal = true): array;
+
+    public function materializePayloadSql(SearchCriteria $criteria): string;
 }
