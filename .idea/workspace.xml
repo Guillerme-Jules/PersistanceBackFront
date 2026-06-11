@@ -4,12 +4,8 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="76346bb0-c703-48c1-8e24-8deae8524a2f" name="Changes" comment="DEV - Pagination.">
+    <list default="true" id="76346bb0-c703-48c1-8e24-8deae8524a2f" name="Changes" comment="DEV - Hors Connexion.">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Persistance-Front/src/App.vue" beforeDir="false" afterPath="$PROJECT_DIR$/Persistance-Front/src/App.vue" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Persistance-Front/src/components/Dashboard.vue" beforeDir="false" afterPath="$PROJECT_DIR$/Persistance-Front/src/components/Dashboard.vue" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Persistance-Front/src/services/http.js" beforeDir="false" afterPath="$PROJECT_DIR$/Persistance-Front/src/services/http.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Persistance-Front/src/stores/auth.js" beforeDir="false" afterPath="$PROJECT_DIR$/Persistance-Front/src/stores/auth.js" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -219,7 +215,7 @@
       <option name="presentableId" value="Default" />
       <updated>1781013865909</updated>
       <workItem from="1781013866933" duration="6289000" />
-      <workItem from="1781093872221" duration="5678000" />
+      <workItem from="1781093872221" duration="8637000" />
     </task>
     <task id="LOCAL-00001" summary="adaze">
       <option name="closed" value="true" />
@@ -285,7 +281,15 @@
       <option name="project" value="LOCAL" />
       <updated>1781101878826</updated>
     </task>
-    <option name="localTasksCounter" value="9" />
+    <task id="LOCAL-00009" summary="DEV - Hors Connexion.">
+      <option name="closed" value="true" />
+      <created>1781165848002</created>
+      <option name="number" value="00009" />
+      <option name="presentableId" value="LOCAL-00009" />
+      <option name="project" value="LOCAL" />
+      <updated>1781165848002</updated>
+    </task>
+    <option name="localTasksCounter" value="10" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -298,6 +302,7 @@
     <MESSAGE value="DEV - front utilisation des api." />
     <MESSAGE value="DEV - Docker file." />
     <MESSAGE value="DEV - Pagination." />
-    <option name="LAST_COMMIT_MESSAGE" value="DEV - Pagination." />
+    <MESSAGE value="DEV - Hors Connexion." />
+    <option name="LAST_COMMIT_MESSAGE" value="DEV - Hors Connexion." />
   </component>
 </project>
