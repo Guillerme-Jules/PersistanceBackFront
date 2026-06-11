@@ -18,6 +18,12 @@ export class ApiError extends Error {
   }
 }
 
+// true si l'erreur traduit un back injoignable (réseau coupé, serveur down, CORS).
+// Utilisé pour basculer en mode hors-ligne plutôt que d'afficher une erreur brute.
+export function isNetworkError(err) {
+  return err instanceof ApiError && err.status === 0
+}
+
 function buildUrl(path, query) {
   const url = new URL(`${BASE_URL}${path}`)
   if (query) {

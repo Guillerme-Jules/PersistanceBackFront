@@ -2,8 +2,10 @@
 import { ref, reactive, onMounted, onBeforeUnmount, watch, computed } from 'vue'
 import { useAuth } from '@/stores/auth'
 import { searchApi, SEARCH_TYPES, METRICS, OPERATORS } from '@/services/api'
+import { isNetworkError } from '@/services/http'
+import { saveHistoryPage, loadHistoryPage } from '@/services/offlineCache'
 
-const { state, logout } = useAuth()
+const { state, logout, setOffline } = useAuth()
 
 const searches = ref([])
 const loading = ref(false)
@@ -43,12 +45,24 @@ const fields = computed(() => {
 async function loadHistory() {
   loading.value = true
   loadError.value = null
+  const userKey = state.user?.id ?? 'anon'
   try {
     const { items } = await searchApi.history({ limit: PAGE_SIZE, offset: page.value * PAGE_SIZE })
     searches.value = items
     hasNext.value = items.length === PAGE_SIZE
+    setOffline(false)
+    saveHistoryPage(userKey, page.value, items) // mémorise la page pour l'accès hors-ligne
   } catch (e) {
-    loadError.value = e.message
+    if (isNetworkError(e)) {
+      // Back injoignable : on sert la page depuis le cache si on l'a déjà consultée.
+      setOffline(true)
+      const cached = loadHistoryPage(userKey, page.value)
+      searches.value = cached ?? []
+      hasNext.value = false // on ne connaît pas la suite hors-ligne
+      if (!cached) loadError.value = 'Hors-ligne et aucune donnée en cache pour cette page.'
+    } else {
+      loadError.value = e.message
+    }
   } finally {
     loading.value = false
   }
@@ -180,6 +194,11 @@ function rowTotal(s) {
   return rowState[s.id]?.total ?? s.result?.rowCount ?? 0
 }
 function rowPagesCount(s) {
+  // Hors-ligne : seule la première page (l'aperçu en cache) est disponible.
+  if (state.offline) {
+    const len = s.result?.preview?.length ?? 0
+    return Math.max(1, Math.ceil(len / ROWS_PER_PAGE))
+  }
   return Math.max(1, Math.ceil(rowTotal(s) / ROWS_PER_PAGE))
 }
 function blockOffsetFor(page) {
@@ -197,7 +216,12 @@ async function toggleRows(s) {
       loading: false,
       error: null,
     }
-    await goToPage(s, 0)
+    if (state.offline) {
+      // Hors-ligne : on affiche directement l'aperçu (première page) sans appel serveur.
+      rowState[s.id].blocks = { 0: s.result?.preview ?? [] }
+    } else {
+      await goToPage(s, 0)
+    }
   }
 }
 
@@ -216,7 +240,15 @@ async function goToPage(s, page) {
   const blockOffset = blockOffsetFor(page)
   if (st.blocks[blockOffset]) {
     st.page = page // bloc déjà en cache → changement instantané
-    prefetchNext(s, blockOffset)
+    if (!state.offline) prefetchNext(s, blockOffset)
+    return
+  }
+  // Hors-ligne : on se limite à l'aperçu (bloc 0), les autres pages sont indisponibles.
+  if (state.offline) {
+    if (blockOffset === 0) {
+      st.blocks = { ...st.blocks, 0: s.result?.preview ?? [] }
+      st.page = 0
+    }
     return
   }
   st.loading = true
@@ -226,7 +258,15 @@ async function goToPage(s, page) {
     await fetchBlock(s, blockOffset)
     prefetchNext(s, blockOffset)
   } catch (e) {
-    st.error = e.message
+    if (isNetworkError(e) && s.result?.preview) {
+      // Bascule hors-ligne en cours de navigation : on retombe sur l'aperçu en cache.
+      setOffline(true)
+      st.blocks = { ...st.blocks, 0: s.result.preview }
+      st.columns = s.result.columns ?? st.columns
+      st.page = 0
+    } else {
+      st.error = e.message
+    }
   } finally {
     st.loading = false
   }
@@ -275,6 +315,10 @@ function goRowPage(s, delta) {
       <button class="ghost" @click="logout">Se déconnecter</button>
     </header>
 
+    <p v-if="state.offline" class="offline-banner">
+      Mode hors-ligne — serveur injoignable. Affichage des données en cache (historique et première page des résultats).
+    </p>
+
     <section class="panel">
       <h2>Nouvelle recherche</h2>
       <div class="row">
@@ -312,7 +356,7 @@ function goRowPage(s, delta) {
           <span>Pas (h)</span>
           <input v-model="form.bucketHours" type="number" min="1" />
         </label>
-        <button class="primary" :disabled="creating" @click="createSearch">
+        <button class="primary" :disabled="creating || state.offline" @click="createSearch">
           {{ creating ? 'Envoi…' : 'Lancer' }}
         </button>
       </div>
@@ -375,12 +419,16 @@ function goRowPage(s, delta) {
                   <span class="muted">{{ (rowState[s.id]?.page ?? 0) + 1 }} / {{ rowPagesCount(s) }}<span v-if="rowState[s.id]?.loading"> …</span></span>
                   <button class="ghost" :disabled="(rowState[s.id]?.page ?? 0) >= rowPagesCount(s) - 1 || rowState[s.id]?.loading" @click="goRowPage(s, 1)">›</button>
                 </div>
-                <p class="muted">{{ rowTotal(s).toLocaleString('fr-FR') }} lignes au total.</p>
+                <p class="muted">
+                  {{ rowTotal(s).toLocaleString('fr-FR') }} lignes au total.<span
+                    v-if="state.offline && rowTotal(s) > (s.result?.preview?.length ?? 0)"
+                  > Hors-ligne : seuls les {{ (s.result?.preview?.length ?? 0) }} premiers sont consultables.</span>
+                </p>
               </div>
             </template>
           </div>
 
-          <button class="link" @click="replay(s.id)">Relancer</button>
+          <button class="link" :disabled="state.offline" @click="replay(s.id)">Relancer</button>
         </li>
       </ul>
 
@@ -628,5 +676,14 @@ table.data th {
 }
 .error {
   color: #ff9b9b;
+}
+.offline-banner {
+  margin: 0;
+  padding: 0.7rem 1rem;
+  border: 1px solid #b8862b;
+  border-radius: 10px;
+  background: rgba(184, 134, 43, 0.12);
+  color: #e7c478;
+  font-size: 0.9rem;
 }
 </style>
